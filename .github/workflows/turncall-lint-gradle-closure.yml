@@ -1,0 +1,108 @@
+name: TurnCall lint-gradle closure
+
+on:
+  push:
+    paths:
+      - '.github/workflows/turncall-lint-gradle-closure.yml'
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Resolve lint-gradle closure
+        run: |
+          set -euo pipefail
+          mkdir -p resolver
+          cat > resolver/settings.gradle <<'EOF'
+          dependencyResolutionManagement {
+            repositories {
+              google()
+              mavenCentral()
+            }
+          }
+          rootProject.name='TurnCallLintResolver'
+          EOF
+          cat > resolver/build.gradle <<'EOF'
+          configurations { lintClosure }
+          repositories { google(); mavenCentral() }
+          dependencies { lintClosure 'com.android.tools.lint:lint-gradle:31.13.0' }
+          tasks.register('materialiseLintClosure') {
+            doLast {
+              configurations.lintClosure.resolvedConfiguration.resolvedArtifacts.each { a ->
+                println "MATERIALISED ${a.moduleVersion.id.group}:${a.name}:${a.moduleVersion.id.version} -> ${a.file.name}"
+              }
+              configurations.lintClosure.files.each { f -> println "FILE ${f.name}" }
+            }
+          }
+          EOF
+          cd resolver
+          gradle --no-daemon --refresh-dependencies materialiseLintClosure
+
+      - name: Build portable Maven repo from Gradle files store
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, hashlib
+
+          src = Path.home()/'.gradle/caches/modules-2/files-2.1'
+          out = Path('portable-lint-maven')
+          if out.exists(): shutil.rmtree(out)
+          out.mkdir(parents=True)
+
+          count = 0
+          conflicts = []
+          for group_dir in src.iterdir():
+              if not group_dir.is_dir(): continue
+              group = group_dir.name
+              for art_dir in group_dir.iterdir():
+                  if not art_dir.is_dir(): continue
+                  artifact = art_dir.name
+                  for ver_dir in art_dir.iterdir():
+                      if not ver_dir.is_dir(): continue
+                      version = ver_dir.name
+                      dest = out / group.replace('.', '/') / artifact / version
+                      dest.mkdir(parents=True, exist_ok=True)
+                      for hash_dir in ver_dir.iterdir():
+                          if not hash_dir.is_dir(): continue
+                          for f in hash_dir.iterdir():
+                              if not f.is_file(): continue
+                              target = dest / f.name
+                              if target.exists():
+                                  if hashlib.sha256(target.read_bytes()).digest() != hashlib.sha256(f.read_bytes()).digest():
+                                      conflicts.append(str(target))
+                                  continue
+                              shutil.copy2(f, target)
+                              count += 1
+          print('COPIED', count)
+          print('CONFLICTS', len(conflicts))
+          if conflicts:
+              raise SystemExit('Conflicting duplicate Maven files: ' + ', '.join(conflicts[:10]))
+          PY
+
+      - name: Package portable lint repository
+        run: |
+          set -euo pipefail
+          zip -q -r turncall-lint-gradle-31.13.0-portable-maven.zip portable-lint-maven
+          sha256sum turncall-lint-gradle-31.13.0-portable-maven.zip > turncall-lint-gradle-31.13.0-portable-maven.zip.sha256
+          ls -lh turncall-lint-gradle-31.13.0-portable-maven.zip*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turncall-lint-gradle-31.13.0-portable-maven
+          path: |
+            turncall-lint-gradle-31.13.0-portable-maven.zip
+            turncall-lint-gradle-31.13.0-portable-maven.zip.sha256
+          compression-level: 0
+          retention-days: 7
