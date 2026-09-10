@@ -1,0 +1,169 @@
+name: TurnCall portable Maven repository
+
+on:
+  push:
+    paths:
+      - '.github/workflows/turncall-portable-maven.yml'
+  workflow_dispatch:
+
+jobs:
+  build-repository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download every dependency-report coordinate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError, URLError
+          import json, xml.etree.ElementTree as ET, hashlib
+
+          coords=[x.strip() for x in Path('turncall-dependency-coordinates.txt').read_text().splitlines() if x.strip()]
+          out=Path('portable-maven')
+          bases=['https://dl.google.com/dl/android/maven2/','https://repo1.maven.org/maven2/']
+          log=[]
+
+          def get(url):
+              try:
+                  req=Request(url,headers={'User-Agent':'TurnCall-dependency-fetch/1.0'})
+                  with urlopen(req, timeout=45) as r:
+                      return r.read()
+              except (HTTPError, URLError, TimeoutError):
+                  return None
+
+          def save(relname, data):
+              p=out/relname
+              p.parent.mkdir(parents=True,exist_ok=True)
+              if p.exists() and p.read_bytes()!=data:
+                  raise RuntimeError(f'conflict: {p}')
+              p.write_bytes(data)
+              return p
+
+          for i,coord in enumerate(coords,1):
+              g,a,v=coord.split(':',2)
+              rel=f"{g.replace('.','/')}/{a}/{v}/"
+              stem=f'{a}-{v}'
+              selected=None
+              pom=None
+              for base in bases:
+                  data=get(base+rel+stem+'.pom')
+                  if data is not None:
+                      selected=base; pom=data; save(rel+stem+'.pom',data); break
+              if selected is None:
+                  log.append(f'MISSING_POM {coord}')
+                  print(f'[{i}/{len(coords)}] missing POM {coord}')
+                  continue
+
+              module=get(selected+rel+stem+'.module')
+              module_files=[]
+              if module is not None:
+                  save(rel+stem+'.module',module)
+                  try:
+                      md=json.loads(module)
+                      for var in md.get('variants',[]):
+                          for f in var.get('files',[]) or []:
+                              u=f.get('url') or f.get('name')
+                              if u: module_files.append(u)
+                  except Exception as e:
+                      log.append(f'MODULE_PARSE {coord} {e}')
+
+              packaging='jar'
+              try:
+                  root=ET.fromstring(pom)
+                  ns=''
+                  if root.tag.startswith('{'): ns=root.tag.split('}')[0]+'}'
+                  packaging=(root.findtext(ns+'packaging') or 'jar').strip()
+              except Exception as e:
+                  log.append(f'POM_PARSE {coord} {e}')
+
+              candidates=[]
+              if packaging not in ('pom','bom'):
+                  candidates.append(f'{stem}.{packaging}')
+              candidates += module_files
+              # Useful fallbacks for repositories whose POM/metadata omits a conventional binary.
+              candidates += [f'{stem}.jar',f'{stem}.aar']
+              seen=set(); downloaded=[]
+              for name in candidates:
+                  if not name or name in seen: continue
+                  seen.add(name)
+                  data=get(selected+rel+name)
+                  if data is None: continue
+                  p=save(rel+name,data)
+                  downloaded.append((name,len(data),hashlib.sha256(data).hexdigest()))
+              log.append(f"OK {coord} repo={selected} packaging={packaging} files=" + ','.join(x[0] for x in downloaded))
+              print(f'[{i}/{len(coords)}] {coord}: {len(downloaded)} files')
+
+          Path('PORTABLE_MAVEN_FETCH_LOG.txt').write_text('\n'.join(log)+'\n')
+          print('repo_files',sum(1 for p in out.rglob('*') if p.is_file()))
+          PY
+
+      - name: Package portable repository
+        run: |
+          set -euo pipefail
+          zip -q -r TURNCALL_PORTABLE_MAVEN_REPO.zip portable-maven PORTABLE_MAVEN_FETCH_LOG.txt turncall-dependency-coordinates.txt
+          sha256sum TURNCALL_PORTABLE_MAVEN_REPO.zip > TURNCALL_PORTABLE_MAVEN_REPO.zip.sha256
+          split -b 60M -d -a 2 TURNCALL_PORTABLE_MAVEN_REPO.zip TURNCALL_PORTABLE_MAVEN_REPO.zip.part-
+          sha256sum TURNCALL_PORTABLE_MAVEN_REPO.zip.part-* > TURNCALL_PORTABLE_MAVEN_REPO.parts.sha256
+          ls -lh TURNCALL_PORTABLE_MAVEN_REPO.zip*
+
+      - name: Upload part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: turncall-portable-maven-part-00
+          path: |
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.part-00
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.sha256
+            TURNCALL_PORTABLE_MAVEN_REPO.parts.sha256
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload part 01 if present
+        if: hashFiles('TURNCALL_PORTABLE_MAVEN_REPO.zip.part-01') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: turncall-portable-maven-part-01
+          path: |
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.part-01
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.sha256
+            TURNCALL_PORTABLE_MAVEN_REPO.parts.sha256
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload part 02 if present
+        if: hashFiles('TURNCALL_PORTABLE_MAVEN_REPO.zip.part-02') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: turncall-portable-maven-part-02
+          path: |
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.part-02
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.sha256
+            TURNCALL_PORTABLE_MAVEN_REPO.parts.sha256
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload part 03 if present
+        if: hashFiles('TURNCALL_PORTABLE_MAVEN_REPO.zip.part-03') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: turncall-portable-maven-part-03
+          path: |
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.part-03
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.sha256
+            TURNCALL_PORTABLE_MAVEN_REPO.parts.sha256
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload part 04 if present
+        if: hashFiles('TURNCALL_PORTABLE_MAVEN_REPO.zip.part-04') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: turncall-portable-maven-part-04
+          path: |
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.part-04
+            TURNCALL_PORTABLE_MAVEN_REPO.zip.sha256
+            TURNCALL_PORTABLE_MAVEN_REPO.parts.sha256
+          compression-level: 0
+          retention-days: 7
