@@ -105,6 +105,7 @@ jobs:
             implementation 'com.google.android.material:material:1.13.0'
             implementation 'com.google.errorprone:error_prone_annotations:2.15.0'
             implementation 'com.google.guava:listenablefuture:1.0'
+            implementation 'com.google.gms:google-services:4.4.4'
             implementation 'org.apache.cordova:framework:14.0.1'
             implementation 'org.jetbrains:annotations:23.0.0'
             implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.0.21'
