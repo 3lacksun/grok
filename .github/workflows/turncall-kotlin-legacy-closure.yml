@@ -1,0 +1,48 @@
+name: TurnCall Kotlin legacy closure
+
+on:
+  push:
+    paths:
+      - '.github/workflows/turncall-kotlin-legacy-closure.yml'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch legacy Kotlin and Coroutines closure
+        run: |
+          set -euo pipefail
+          R=https://repo.maven.apache.org/maven2
+          mkdir -p repo
+
+          fetch_artifact() {
+            g="$1"; a="$2"; v="$3"; shift 3
+            base="repo/${g//./\/}/$a/$v"
+            url="$R/${g//./\/}/$a/$v"
+            mkdir -p "$base"
+            for ext in "$@"; do
+              curl -fL --retry 3 -o "$base/$a-$v.$ext" "$url/$a-$v.$ext"
+            done
+          }
+
+          fetch_artifact org.jetbrains.kotlinx kotlinx-coroutines-core 1.6.4 pom jar module
+          fetch_artifact org.jetbrains.kotlinx kotlinx-coroutines-core-jvm 1.6.4 pom jar module
+          fetch_artifact org.jetbrains.kotlin kotlin-stdlib-jdk8 1.6.21 pom jar
+          fetch_artifact org.jetbrains.kotlin kotlin-stdlib-jdk7 1.6.21 pom jar
+          fetch_artifact org.jetbrains.kotlin kotlin-stdlib-common 1.6.21 pom jar
+
+          sha256sum $(find repo -type f | sort) | tee SHA256SUMS.txt
+          zip -q -r turncall-kotlin-legacy-closure.zip repo SHA256SUMS.txt
+          sha256sum turncall-kotlin-legacy-closure.zip > turncall-kotlin-legacy-closure.zip.sha256
+          ls -lh turncall-kotlin-legacy-closure.zip*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turncall-kotlin-legacy-closure
+          path: |
+            turncall-kotlin-legacy-closure.zip
+            turncall-kotlin-legacy-closure.zip.sha256
+          compression-level: 0
+          retention-days: 7
