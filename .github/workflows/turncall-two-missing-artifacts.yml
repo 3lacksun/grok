@@ -18,7 +18,7 @@ jobs:
           curl -fL --retry 3 -o out/listenablefuture-1.0.jar \
             https://repo1.maven.org/maven2/com/google/guava/listenablefuture/1.0/listenablefuture-1.0.jar
           curl -fL --retry 3 -o out/graphics-shapes-release.aar \
-            https://dl.google.com/dl/android/maven2/androidx/graphics/graphics-shapes-android/1.0.1/graphics-shapes-release.aar
+            https://dl.google.com/dl/android/maven2/androidx/graphics/graphics-shapes-android/1.0.1/graphics-shapes-android-1.0.1.aar
           sha256sum out/* | tee SHA256SUMS.txt
           file out/*
           ls -lh out/*
