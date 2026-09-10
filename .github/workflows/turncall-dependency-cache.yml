@@ -30,6 +30,7 @@ jobs:
       - name: Create resolver
         run: |
           mkdir -p resolver/app/src/main
+          printf 'android.useAndroidX=true\nandroid.enableJetifier=true\n' > resolver/gradle.properties
           cat > resolver/settings.gradle <<'EOF'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement { repositories { google(); mavenCentral() } }
@@ -120,10 +121,11 @@ jobs:
         run: |
           gradle --no-daemon --refresh-dependencies :app:dependencies --configuration releaseCompileClasspath
           gradle --no-daemon :app:dependencies --configuration releaseRuntimeClasspath
-          gradle --no-daemon :app:assembleRelease
 
       - name: Package modules cache
+        if: always()
         run: |
+          test -d "$HOME/.gradle/caches/modules-2"
           cd "$HOME/.gradle/caches"
           zip -q -r "$GITHUB_WORKSPACE/turncall-gradle-modules-2.zip" modules-2
           cd "$GITHUB_WORKSPACE"
@@ -131,6 +133,7 @@ jobs:
           ls -lh turncall-gradle-modules-2.zip turncall-gradle-modules-2.zip.sha256
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: turncall-gradle-modules-2
           path: |
