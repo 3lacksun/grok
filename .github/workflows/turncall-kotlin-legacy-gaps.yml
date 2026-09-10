@@ -1,0 +1,44 @@
+name: TurnCall Kotlin legacy Maven gaps
+
+on:
+  push:
+    paths:
+      - '.github/workflows/turncall-kotlin-legacy-gaps.yml'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch exact Maven artifacts
+        run: |
+          set -euo pipefail
+          R=https://repo.maven.apache.org/maven2
+          mkdir -p repo/org/jetbrains/kotlinx/kotlinx-coroutines-bom/1.6.4
+          mkdir -p repo/org/jetbrains/kotlin/kotlin-stdlib-common/1.8.22
+
+          curl -fL --retry 3 \
+            -o repo/org/jetbrains/kotlinx/kotlinx-coroutines-bom/1.6.4/kotlinx-coroutines-bom-1.6.4.pom \
+            "$R/org/jetbrains/kotlinx/kotlinx-coroutines-bom/1.6.4/kotlinx-coroutines-bom-1.6.4.pom"
+
+          curl -fL --retry 3 \
+            -o repo/org/jetbrains/kotlin/kotlin-stdlib-common/1.8.22/kotlin-stdlib-common-1.8.22.pom \
+            "$R/org/jetbrains/kotlin/kotlin-stdlib-common/1.8.22/kotlin-stdlib-common-1.8.22.pom"
+          curl -fL --retry 3 \
+            -o repo/org/jetbrains/kotlin/kotlin-stdlib-common/1.8.22/kotlin-stdlib-common-1.8.22.jar \
+            "$R/org/jetbrains/kotlin/kotlin-stdlib-common/1.8.22/kotlin-stdlib-common-1.8.22.jar"
+
+          sha256sum $(find repo -type f | sort) | tee SHA256SUMS.txt
+          zip -q -r turncall-kotlin-legacy-gaps.zip repo SHA256SUMS.txt
+          sha256sum turncall-kotlin-legacy-gaps.zip > turncall-kotlin-legacy-gaps.zip.sha256
+          ls -lh turncall-kotlin-legacy-gaps.zip*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turncall-kotlin-legacy-gaps
+          path: |
+            turncall-kotlin-legacy-gaps.zip
+            turncall-kotlin-legacy-gaps.zip.sha256
+          compression-level: 0
+          retention-days: 7
