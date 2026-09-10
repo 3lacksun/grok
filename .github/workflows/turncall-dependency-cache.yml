@@ -1,0 +1,140 @@
+name: TurnCall public dependency cache resolver
+
+on:
+  push:
+    paths:
+      - '.github/workflows/turncall-dependency-cache.yml'
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Create resolver
+        run: |
+          mkdir -p resolver/app/src/main
+          cat > resolver/settings.gradle <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name='TurnCallDependencyResolver'
+          include ':app'
+          EOF
+          cat > resolver/build.gradle <<'EOF'
+          plugins { id 'com.android.application' version '8.13.0' apply false }
+          EOF
+          cat > resolver/app/build.gradle <<'EOF'
+          plugins { id 'com.android.application' }
+          android {
+            namespace 'im.turncall.dependencyresolver'
+            compileSdk 36
+            defaultConfig { applicationId 'im.turncall.dependencyresolver'; minSdk 24; targetSdk 36; versionCode 1; versionName '1.0' }
+          }
+          dependencies {
+            implementation 'androidx.activity:activity:1.11.0'
+            implementation 'androidx.annotation:annotation:1.8.1'
+            implementation 'androidx.annotation:annotation-experimental:1.4.1'
+            implementation 'androidx.annotation:annotation-jvm:1.8.1'
+            implementation 'androidx.appcompat:appcompat:1.7.1'
+            implementation 'androidx.appcompat:appcompat-resources:1.7.1'
+            implementation 'androidx.arch.core:core-common:2.2.0'
+            implementation 'androidx.arch.core:core-runtime:2.2.0'
+            implementation 'androidx.cardview:cardview:1.0.0'
+            implementation 'androidx.collection:collection:1.4.2'
+            implementation 'androidx.collection:collection-jvm:1.4.2'
+            implementation 'androidx.concurrent:concurrent-futures:1.1.0'
+            implementation 'androidx.constraintlayout:constraintlayout:2.1.0'
+            implementation 'androidx.constraintlayout:constraintlayout-core:1.0.0'
+            implementation 'androidx.coordinatorlayout:coordinatorlayout:1.3.0'
+            implementation 'androidx.core:core:1.17.0'
+            implementation 'androidx.core:core-ktx:1.17.0'
+            implementation 'androidx.core:core-splashscreen:1.0.1'
+            implementation 'androidx.core:core-splashscreen:1.2.0'
+            implementation 'androidx.core:core-viewtree:1.0.0'
+            implementation 'androidx.cursoradapter:cursoradapter:1.0.0'
+            implementation 'androidx.customview:customview:1.0.0'
+            implementation 'androidx.customview:customview:1.1.0'
+            implementation 'androidx.drawerlayout:drawerlayout:1.0.0'
+            implementation 'androidx.drawerlayout:drawerlayout:1.1.1'
+            implementation 'androidx.dynamicanimation:dynamicanimation:1.1.0'
+            implementation 'androidx.emoji2:emoji2:1.3.0'
+            implementation 'androidx.emoji2:emoji2-views-helper:1.3.0'
+            implementation 'androidx.exifinterface:exifinterface:1.4.1'
+            implementation 'androidx.fragment:fragment:1.8.9'
+            implementation 'androidx.graphics:graphics-shapes:1.0.1'
+            implementation 'androidx.graphics:graphics-shapes-android:1.0.1'
+            implementation 'androidx.interpolator:interpolator:1.0.0'
+            implementation 'androidx.lifecycle:lifecycle-common:2.6.2'
+            implementation 'androidx.lifecycle:lifecycle-livedata:2.6.2'
+            implementation 'androidx.lifecycle:lifecycle-livedata-core:2.6.2'
+            implementation 'androidx.lifecycle:lifecycle-process:2.6.2'
+            implementation 'androidx.lifecycle:lifecycle-runtime:2.6.2'
+            implementation 'androidx.lifecycle:lifecycle-viewmodel:2.6.2'
+            implementation 'androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.2'
+            implementation 'androidx.loader:loader:1.0.0'
+            implementation 'androidx.profileinstaller:profileinstaller:1.4.0'
+            implementation 'androidx.recyclerview:recyclerview:1.2.1'
+            implementation 'androidx.resourceinspection:resourceinspection-annotation:1.0.1'
+            implementation 'androidx.savedstate:savedstate:1.2.1'
+            implementation 'androidx.startup:startup-runtime:1.1.1'
+            implementation 'androidx.tracing:tracing:1.2.0'
+            implementation 'androidx.transition:transition:1.5.0'
+            implementation 'androidx.vectordrawable:vectordrawable:1.1.0'
+            implementation 'androidx.vectordrawable:vectordrawable-animated:1.1.0'
+            implementation 'androidx.versionedparcelable:versionedparcelable:1.1.1'
+            implementation 'androidx.viewpager:viewpager:1.0.0'
+            implementation 'androidx.viewpager2:viewpager2:1.0.0'
+            implementation 'androidx.webkit:webkit:1.14.0'
+            implementation 'com.google.android.material:material:1.13.0'
+            implementation 'com.google.errorprone:error_prone_annotations:2.15.0'
+            implementation 'com.google.guava:listenablefuture:1.0'
+            implementation 'org.apache.cordova:framework:14.0.1'
+            implementation 'org.jetbrains:annotations:23.0.0'
+            implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.0.21'
+            implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+            implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1'
+            implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1'
+            implementation 'org.jspecify:jspecify:1.0.0'
+          }
+          EOF
+          printf '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>\n' > resolver/app/src/main/AndroidManifest.xml
+
+      - name: Resolve dependency closure
+        working-directory: resolver
+        run: |
+          gradle --no-daemon --refresh-dependencies :app:dependencies --configuration releaseCompileClasspath
+          gradle --no-daemon :app:dependencies --configuration releaseRuntimeClasspath
+          gradle --no-daemon :app:assembleRelease
+
+      - name: Package modules cache
+        run: |
+          cd "$HOME/.gradle/caches"
+          zip -q -r "$GITHUB_WORKSPACE/turncall-gradle-modules-2.zip" modules-2
+          cd "$GITHUB_WORKSPACE"
+          sha256sum turncall-gradle-modules-2.zip > turncall-gradle-modules-2.zip.sha256
+          ls -lh turncall-gradle-modules-2.zip turncall-gradle-modules-2.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turncall-gradle-modules-2
+          path: |
+            turncall-gradle-modules-2.zip
+            turncall-gradle-modules-2.zip.sha256
+          compression-level: 0
+          retention-days: 7
