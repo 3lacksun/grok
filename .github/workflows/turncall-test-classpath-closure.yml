@@ -1,0 +1,114 @@
+name: TurnCall release unit-test classpath closure
+
+on:
+  push:
+    paths:
+      - '.github/workflows/turncall-test-classpath-closure.yml'
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Resolve exact JVM test closure
+        run: |
+          set -euo pipefail
+          mkdir -p resolver
+          cat > resolver/settings.gradle <<'EOF'
+          dependencyResolutionManagement { repositories { mavenCentral(); google() } }
+          rootProject.name='TurnCallTestResolver'
+          EOF
+          cat > resolver/build.gradle <<'EOF'
+          import org.gradle.api.attributes.Bundling
+          import org.gradle.api.attributes.Category
+          import org.gradle.api.attributes.LibraryElements
+          import org.gradle.api.attributes.Usage
+          import org.gradle.api.attributes.java.TargetJvmEnvironment
+
+          configurations {
+            testClosure {
+              canBeResolved = true
+              canBeConsumed = false
+              attributes {
+                attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+                attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+                attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+                attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
+                attribute(TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE, objects.named(TargetJvmEnvironment, TargetJvmEnvironment.STANDARD_JVM))
+              }
+            }
+          }
+          repositories { mavenCentral(); google() }
+          dependencies {
+            testClosure 'junit:junit:4.13.2'
+            testClosure 'org.json:json:20250517'
+            testClosure 'org.mockito:mockito-core:5.20.0'
+          }
+          tasks.register('materialiseTestClosure') {
+            doLast {
+              configurations.testClosure.resolvedConfiguration.resolvedArtifacts.each { a ->
+                println "MATERIALISED ${a.moduleVersion.id.group}:${a.name}:${a.moduleVersion.id.version} -> ${a.file.name}"
+              }
+              configurations.testClosure.files.each { f -> println "FILE ${f.name}" }
+            }
+          }
+          EOF
+          cd resolver
+          gradle --no-daemon --refresh-dependencies materialiseTestClosure
+
+      - name: Build portable Maven repo
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, hashlib
+          src = Path.home()/'.gradle/caches/modules-2/files-2.1'
+          out = Path('portable-test-maven')
+          if out.exists(): shutil.rmtree(out)
+          out.mkdir(parents=True)
+          count=0; conflicts=[]
+          for gd in src.iterdir():
+              if not gd.is_dir(): continue
+              g=gd.name
+              for ad in gd.iterdir():
+                  if not ad.is_dir(): continue
+                  a=ad.name
+                  for vd in ad.iterdir():
+                      if not vd.is_dir(): continue
+                      v=vd.name
+                      dest=out/g.replace('.','/')/a/v
+                      dest.mkdir(parents=True,exist_ok=True)
+                      for hd in vd.iterdir():
+                          if not hd.is_dir(): continue
+                          for f in hd.iterdir():
+                              if not f.is_file(): continue
+                              t=dest/f.name
+                              if t.exists():
+                                  if hashlib.sha256(t.read_bytes()).digest()!=hashlib.sha256(f.read_bytes()).digest(): conflicts.append(str(t))
+                                  continue
+                              shutil.copy2(f,t); count+=1
+          print('COPIED',count); print('CONFLICTS',len(conflicts))
+          if conflicts: raise SystemExit('conflicts: '+', '.join(conflicts[:10]))
+          PY
+      - name: Package
+        run: |
+          set -euo pipefail
+          zip -q -r turncall-test-classpath-portable-maven.zip portable-test-maven
+          sha256sum turncall-test-classpath-portable-maven.zip > turncall-test-classpath-portable-maven.zip.sha256
+          ls -lh turncall-test-classpath-portable-maven.zip*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turncall-test-classpath-portable-maven
+          path: |
+            turncall-test-classpath-portable-maven.zip
+            turncall-test-classpath-portable-maven.zip.sha256
+          compression-level: 0
+          retention-days: 7
