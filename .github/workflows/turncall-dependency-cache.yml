@@ -114,14 +114,19 @@ jobs:
             implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1'
             implementation 'org.jspecify:jspecify:1.0.0'
           }
+          tasks.register('materialiseReleaseArtifacts') {
+            doLast {
+              configurations.releaseCompileClasspath.files.each { println "MATERIALISED ${it.name}" }
+              configurations.releaseRuntimeClasspath.files.each { println "MATERIALISED ${it.name}" }
+            }
+          }
           EOF
           printf '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>\n' > resolver/app/src/main/AndroidManifest.xml
 
-      - name: Resolve dependency closure
+      - name: Resolve and materialise dependency closure
         working-directory: resolver
         run: |
-          gradle --no-daemon --refresh-dependencies :app:dependencies --configuration releaseCompileClasspath
-          gradle --no-daemon :app:dependencies --configuration releaseRuntimeClasspath
+          gradle --no-daemon --refresh-dependencies :app:materialiseReleaseArtifacts
 
       - name: Package modules cache
         if: always()
