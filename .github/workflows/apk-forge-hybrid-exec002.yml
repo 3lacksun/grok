@@ -41,7 +41,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p apkforge-work
-          base64 -d apk-forge-build/apkforge-source.tar.gz.b64 > apkforge-source.tar.gz
+          cat apk-forge-build/source-parts/part-* > apkforge-source.tar.gz.b64
+          echo "f86c207a6a0349874ebe578f0f8977d5f1e5560f93e000f16e0c0056ef32db34  apkforge-source.tar.gz.b64" | sha256sum -c -
+          base64 -d apkforge-source.tar.gz.b64 > apkforge-source.tar.gz
           echo "8703f1223131a456c11c6acd54b1c623e286f026c0f2ecd3e0535b8e0ed0053e  apkforge-source.tar.gz" | sha256sum -c -
           tar -xzf apkforge-source.tar.gz -C apkforge-work
           find apkforge-work -maxdepth 3 -type f | sort | sed -n '1,200p'
