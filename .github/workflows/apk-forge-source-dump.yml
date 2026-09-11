@@ -24,11 +24,13 @@ jobs:
           for f in \
             app/src/main/kotlin/net/apkforge/app/MainActivity.kt \
             app/src/main/kotlin/net/apkforge/app/build/AndroidBuildController.kt \
-            app/src/main/kotlin/net/apkforge/app/build/BuildForegroundService.kt \
-            app/src/main/kotlin/net/apkforge/app/storage/ProjectStorage.kt \
-            core/src/main/kotlin/net/apkforge/core/build/BuildPlan.kt \
-            core/src/main/kotlin/net/apkforge/core/build/BuildOrchestrator.kt \
-            core/src/main/kotlin/net/apkforge/core/toolchain/Toolchain.kt; do
+            app/src/main/kotlin/net/apkforge/app/tools/ToolDownloadPolicy.kt \
+            app/src/main/kotlin/net/apkforge/app/tools/ToolDownloadWorker.kt \
+            app/src/main/kotlin/net/apkforge/app/settings/SettingsRepository.kt \
+            core/src/main/kotlin/net/apkforge/core/model/Models.kt \
+            core/src/main/kotlin/net/apkforge/core/project/ApkDecodePlanner.kt \
+            core/src/main/kotlin/net/apkforge/core/project/ProjectCodec.kt \
+            core/src/main/kotlin/net/apkforge/core/build/BuildPlan.kt; do
               echo "=== $f ==="
-              nl -ba "apkforge-work/$f"
+              if [ -f "apkforge-work/$f" ]; then nl -ba "apkforge-work/$f"; else echo MISSING; fi
           done
