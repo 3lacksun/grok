@@ -121,7 +121,7 @@ private fun importAndAnalyse(context:Context,uri:Uri):ProjectSummary{
     }
     var root=imported.root.toPath(); var analysis=ProjectAnalyser().analyse(root)
     if(analysis.type.name=="UNKNOWN"){
-        val dirs=Files.list(root).use{s->s.filter(Files::isDirectory).toList()}; if(dirs.size==1){val nested=ProjectAnalyser().analyse(dirs.single()); if(nested.type.name!="UNKNOWN"){root=dirs.single();analysis=nested}}
+        val dirs=Files.list(root).use{s->s.filter(Files::isDirectory).iterator().asSequence().toList()}; if(dirs.size==1){val nested=ProjectAnalyser().analyse(dirs.single()); if(nested.type.name!="UNKNOWN"){root=dirs.single();analysis=nested}}
     }
     return ProjectSummary(name,analysis.type.wire,"${analysis.dexTrees.size} Smali DEX trees · ${analysis.javaFiles} Java · ${analysis.resourceFiles} resources · ${analysis.totalFiles} files",root.toFile())
 }
