@@ -47,6 +47,19 @@ jobs:
           echo "8703f1223131a456c11c6acd54b1c623e286f026c0f2ecd3e0535b8e0ed0053e  apkforge-source.tar.gz" | sha256sum -c -
           tar -xzf apkforge-source.tar.gz -C apkforge-work
           if [ -d apk-forge-build/overrides ]; then cp -a apk-forge-build/overrides/. apkforge-work/; fi
+
+          # Restore the exact deterministic test fixture omitted from the compact transport archive.
+          FIX=apkforge-work/test-fixtures/apktool-smali
+          mkdir -p "$FIX/res/values" "$FIX/smali/com/example" "$FIX/smali_classes2/com/example" "$FIX/smali_classes7/com/example" "$FIX/src/com/example" "$FIX/lib/arm64-v8a"
+          printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.directive.test" android:versionCode="1" android:versionName="1.0"><uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36"/><application android:label="Fixture"/></manifest>' > "$FIX/AndroidManifest.xml"
+          printf '%s\n' 'version: 2.12.1' > "$FIX/apktool.yml"
+          printf '%s\n' '<resources><string name="app_name">Fixture</string></resources>' > "$FIX/res/values/strings.xml"
+          printf '%s\n' '.class public Lcom/example/A;' '.super Ljava/lang/Object;' > "$FIX/smali/com/example/A.smali"
+          printf '%s\n' '.class public Lcom/example/B;' '.super Ljava/lang/Object;' > "$FIX/smali_classes2/com/example/B.smali"
+          printf '%s\n' '.class public Lcom/example/G;' '.super Ljava/lang/Object;' > "$FIX/smali_classes7/com/example/G.smali"
+          printf '%s\n' 'package com.example; public final class Ext {}' > "$FIX/src/com/example/Ext.java"
+          printf '\177ELFfixture' > "$FIX/lib/arm64-v8a/libfixture.so"
+
           find apkforge-work -maxdepth 3 -type f | sort | sed -n '1,200p'
 
       - name: Gradle version
