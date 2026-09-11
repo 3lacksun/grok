@@ -1,0 +1,105 @@
+name: APK Forge Hybrid EXEC002 Build
+
+on:
+  push:
+    branches:
+      - apk-forge-hybrid-exec002-11092026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36 and Build Tools
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Restore APK Forge source
+        shell: bash
+        run: |
+          mkdir -p apkforge-work
+          base64 -d apk-forge-build/apkforge-source.tar.gz.b64 > apkforge-source.tar.gz
+          echo "8703f1223131a456c11c6acd54b1c623e286f026c0f2ecd3e0535b8e0ed0053e  apkforge-source.tar.gz" | sha256sum -c -
+          tar -xzf apkforge-source.tar.gz -C apkforge-work
+          find apkforge-work -maxdepth 3 -type f | sort | sed -n '1,200p'
+
+      - name: Gradle version
+        working-directory: apkforge-work
+        run: gradle --version
+
+      - name: Core unit tests
+        working-directory: apkforge-work
+        run: gradle --stacktrace --no-daemon :core:test
+
+      - name: Compile debug Kotlin
+        working-directory: apkforge-work
+        run: gradle --stacktrace --no-daemon :app:compileDebugKotlin
+
+      - name: Lint debug
+        working-directory: apkforge-work
+        run: gradle --stacktrace --no-daemon :app:lintDebug
+
+      - name: Assemble debug APK
+        working-directory: apkforge-work
+        run: gradle --stacktrace --no-daemon :app:assembleDebug
+
+      - name: Verify APK identity, alignment and signature
+        shell: bash
+        run: |
+          APK=apkforge-work/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 "$APK" | tee zipalign.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          sha256sum "$APK" | tee apk-sha256.txt
+
+      - name: Package verification evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cp -f apk-badging.txt zipalign.txt apksigner.txt apk-sha256.txt evidence/ 2>/dev/null || true
+          cp -f apkforge-work/app/build/reports/lint-results-debug.html evidence/ 2>/dev/null || true
+          cp -f apkforge-work/app/build/reports/lint-results-debug.xml evidence/ 2>/dev/null || true
+          cp -f apkforge-work/core/build/reports/tests/test/index.html evidence/core-test-index.html 2>/dev/null || true
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK_FORGE_HYBRID_V0_1_0_DEBUG
+          path: apkforge-work/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK_FORGE_HYBRID_V0_1_0_EXEC002_EVIDENCE
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 7
