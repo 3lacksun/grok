@@ -21,9 +21,14 @@ jobs:
           cat apk-forge-build/source-parts/part-* > apkforge-source.tar.gz.b64
           base64 -d apkforge-source.tar.gz.b64 > apkforge-source.tar.gz
           tar -xzf apkforge-source.tar.gz -C apkforge-work
-          echo '=== MAIN_ACTIVITY ==='
-          nl -ba apkforge-work/app/src/main/kotlin/net/apkforge/app/MainActivity.kt
-          echo '=== UI FILES ==='
-          find apkforge-work/app/src/main/kotlin/net/apkforge/app -type f -name '*.kt' | sort
-          echo '=== BUILD REFERENCES ==='
-          grep -RniE 'Build APK|startBuild|BuildForegroundService|BuildOrchestrator|BuildsScreen|ProjectsScreen|projectId|workspace' apkforge-work/app/src/main/kotlin/net/apkforge/app || true
+          for f in \
+            app/src/main/kotlin/net/apkforge/app/MainActivity.kt \
+            app/src/main/kotlin/net/apkforge/app/build/AndroidBuildController.kt \
+            app/src/main/kotlin/net/apkforge/app/build/BuildForegroundService.kt \
+            app/src/main/kotlin/net/apkforge/app/storage/ProjectStorage.kt \
+            core/src/main/kotlin/net/apkforge/core/build/BuildPlan.kt \
+            core/src/main/kotlin/net/apkforge/core/build/BuildOrchestrator.kt \
+            core/src/main/kotlin/net/apkforge/core/toolchain/Toolchain.kt; do
+              echo "=== $f ==="
+              nl -ba "apkforge-work/$f"
+          done
