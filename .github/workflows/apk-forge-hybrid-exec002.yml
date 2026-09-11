@@ -46,15 +46,19 @@ jobs:
           base64 -d apkforge-source.tar.gz.b64 > apkforge-source.tar.gz
           echo "8703f1223131a456c11c6acd54b1c623e286f026c0f2ecd3e0535b8e0ed0053e  apkforge-source.tar.gz" | sha256sum -c -
           tar -xzf apkforge-source.tar.gz -C apkforge-work
+          if [ -d apk-forge-build/overrides ]; then cp -a apk-forge-build/overrides/. apkforge-work/; fi
           find apkforge-work -maxdepth 3 -type f | sort | sed -n '1,200p'
 
       - name: Gradle version
         working-directory: apkforge-work
         run: gradle --version
 
-      - name: Core unit tests
+      - name: Core regression harness
         working-directory: apkforge-work
-        run: gradle --stacktrace --no-daemon :core:test
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --stacktrace --no-daemon :core:verifyCore | tee ../core-regression.txt
 
       - name: Compile debug Kotlin
         working-directory: apkforge-work
@@ -83,10 +87,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p evidence
+          cp -f core-regression.txt evidence/ 2>/dev/null || true
           cp -f apk-badging.txt zipalign.txt apksigner.txt apk-sha256.txt evidence/ 2>/dev/null || true
           cp -f apkforge-work/app/build/reports/lint-results-debug.html evidence/ 2>/dev/null || true
           cp -f apkforge-work/app/build/reports/lint-results-debug.xml evidence/ 2>/dev/null || true
-          cp -f apkforge-work/core/build/reports/tests/test/index.html evidence/core-test-index.html 2>/dev/null || true
+          cp -rf apkforge-work/core/build/test-results evidence/core-test-results 2>/dev/null || true
 
       - name: Upload APK
         if: success()
