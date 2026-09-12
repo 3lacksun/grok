@@ -40,6 +40,7 @@ jobs:
       - name: Restore APK Forge source
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p apkforge-work
           cat apk-forge-build/source-parts/part-* > apkforge-source.tar.gz.b64
           echo "f86c207a6a0349874ebe578f0f8977d5f1e5560f93e000f16e0c0056ef32db34  apkforge-source.tar.gz.b64" | sha256sum -c -
@@ -47,6 +48,22 @@ jobs:
           echo "8703f1223131a456c11c6acd54b1c623e286f026c0f2ecd3e0535b8e0ed0053e  apkforge-source.tar.gz" | sha256sum -c -
           tar -xzf apkforge-source.tar.gz -C apkforge-work
           if [ -d apk-forge-build/overrides ]; then cp -a apk-forge-build/overrides/. apkforge-work/; fi
+
+          # Package pinned Android-native AAPT2 binaries. They are installed by Android
+          # into nativeLibraryDir and invoked by the embedded Apktool engine at runtime.
+          BASE=https://github.com/ReVanced/aapt2/releases/download/v1.1.0
+          fetch_aapt2() {
+            ABI="$1"; ASSET="$2"; SHA="$3"
+            DIR="apkforge-work/app/src/main/jniLibs/$ABI"
+            mkdir -p "$DIR"
+            curl --fail --location --retry 3 --retry-delay 2 "$BASE/$ASSET" -o "$DIR/libaapt2.so"
+            echo "$SHA  $DIR/libaapt2.so" | sha256sum -c -
+            chmod 0755 "$DIR/libaapt2.so"
+          }
+          fetch_aapt2 arm64-v8a aapt2-arm64-v8a 7e5ae2e1f62fc24cab14072555ffd0a1a7e1ce27e82cc1008967b835b6d8df5b
+          fetch_aapt2 armeabi-v7a aapt2-armeabi-v7a 466124dc6a412c39cb970a12ccaf2df054abf6f6e63e78690cd7b6e53263bd86
+          fetch_aapt2 x86 aapt2-x86 52ab9dbdff56f5498dd6bf2c6a0400509330258d6db624d4c7a850314a6df715
+          fetch_aapt2 x86_64 aapt2-x86_64 46d2244c3c574979ecae452c8a32e0a25ac0184bfe29a3d805821e36401ecdcb
 
           FIX=apkforge-work/test-fixtures/apktool-smali
           mkdir -p "$FIX/res/values" "$FIX/smali/com/example" "$FIX/smali_classes2/com/example" "$FIX/smali_classes7/com/example" "$FIX/src/com/example" "$FIX/lib/arm64-v8a"
@@ -73,7 +90,7 @@ jobs:
               raise SystemExit('MainActivity directory collection expression is neither recognised variant')
           PY
 
-          find apkforge-work -maxdepth 3 -type f | sort | sed -n '1,200p'
+          find apkforge-work/app/src/main/jniLibs -type f -name libaapt2.so -print -exec sha256sum {} \;
 
       - name: Gradle version
         working-directory: apkforge-work
@@ -98,12 +115,17 @@ jobs:
         working-directory: apkforge-work
         run: gradle --stacktrace --no-daemon :app:assembleDebug
 
-      - name: Verify APK identity, alignment and signature
+      - name: Verify APK identity, packaged engine, alignment and signature
         shell: bash
         run: |
+          set -euo pipefail
           APK=apkforge-work/app/build/outputs/apk/debug/app-debug.apk
           test -f "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          unzip -l "$APK" | tee apk-contents.txt
+          for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
+            grep -q "lib/$ABI/libaapt2.so" apk-contents.txt
+          done
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 "$APK" | tee zipalign.txt
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
           sha256sum "$APK" | tee apk-sha256.txt
@@ -114,7 +136,7 @@ jobs:
         run: |
           mkdir -p evidence
           cp -f core-regression.txt evidence/ 2>/dev/null || true
-          cp -f apk-badging.txt zipalign.txt apksigner.txt apk-sha256.txt evidence/ 2>/dev/null || true
+          cp -f apk-badging.txt apk-contents.txt zipalign.txt apksigner.txt apk-sha256.txt evidence/ 2>/dev/null || true
           cp -f apkforge-work/app/build/reports/lint-results-debug.html evidence/ 2>/dev/null || true
           cp -f apkforge-work/app/build/reports/lint-results-debug.xml evidence/ 2>/dev/null || true
           cp -rf apkforge-work/core/build/test-results evidence/core-test-results 2>/dev/null || true
@@ -123,7 +145,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: APK_FORGE_HYBRID_V0_1_1_DEBUG
+          name: APK_FORGE_HYBRID_V0_1_2_EMBEDDED_BUILD_DEBUG
           path: apkforge-work/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -132,7 +154,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: APK_FORGE_HYBRID_V0_1_1_EXEC002_EVIDENCE
+          name: APK_FORGE_HYBRID_V0_1_2_EMBEDDED_BUILD_EVIDENCE
           path: evidence
           if-no-files-found: warn
           retention-days: 7
