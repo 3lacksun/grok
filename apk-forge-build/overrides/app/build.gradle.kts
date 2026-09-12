@@ -13,8 +13,9 @@ android {
         applicationId = "net.apkforge.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
+        multiDexEnabled = true
     }
 
     compileOptions {
@@ -29,6 +30,7 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
+        jniLibs.useLegacyPackaging = true
     }
 }
 
@@ -53,5 +55,10 @@ dependencies {
     kapt("androidx.room:room-compiler:2.7.2")
     implementation("androidx.work:work-runtime-ktx:2.10.3")
     implementation("androidx.datastore:datastore-preferences:1.1.7")
+
+    // On-device APK/Smali rebuild engine and in-process APK signing/verification.
+    implementation("org.apktool:apktool-lib:2.12.1")
+    implementation("com.android.tools.build:apksig:8.13.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
