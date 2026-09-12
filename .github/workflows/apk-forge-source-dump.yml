@@ -21,11 +21,18 @@ jobs:
           cat apk-forge-build/source-parts/part-* > apkforge-source.tar.gz.b64
           base64 -d apkforge-source.tar.gz.b64 > apkforge-source.tar.gz
           tar -xzf apkforge-source.tar.gz -C apkforge-work
-          echo '=== CORE FILES ==='
-          find apkforge-work/core/src/main/kotlin -type f | sort
-          echo '=== APK DECODE REFERENCES ==='
-          grep -RniE 'ApkDecode|decode.*apk|APKTOOL|apktool|input\.apk|baksmali' apkforge-work/core/src/main/kotlin apkforge-work/core/src/test/kotlin || true
-          echo '=== TOOL INVOCATION REFERENCES ==='
-          grep -RniE 'ToolInvocation\(|ToolStore\(|ToolCatalogue|SigningSecretStore|runLocal\(' apkforge-work/app/src/main/kotlin apkforge-work/core/src/main/kotlin apkforge-work/core/src/test/kotlin || true
-          echo '=== PROJECT ANALYSER ==='
-          nl -ba apkforge-work/core/src/main/kotlin/net/apkforge/core/project/ProjectAnalyser.kt
+          for f in \
+            core/src/main/kotlin/net/apkforge/core/build/ApkDecode.kt \
+            app/src/main/kotlin/net/apkforge/app/build/AndroidBuildController.kt \
+            app/src/main/kotlin/net/apkforge/app/security/SigningSecretStore.kt \
+            app/src/main/AndroidManifest.xml \
+            core/src/main/kotlin/net/apkforge/core/remote/RemoteBuildClient.kt \
+            app/src/main/kotlin/net/apkforge/app/tools/ToolDownloadWorker.kt \
+            app/src/main/kotlin/net/apkforge/app/settings/SettingsRepository.kt; do
+              echo "=== $f ==="
+              if [ -f "apkforge-work/$f" ]; then nl -ba "apkforge-work/$f"; else echo MISSING; fi
+          done
+          echo '=== ASSET/CONFIG INVENTORY ==='
+          find apkforge-work/app/src/main -maxdepth 4 -type f | sort
+          echo '=== TOOLCHAIN/CATALOGUE INVENTORY ==='
+          find apkforge-work -type f | grep -Ei 'tool|catalog|keystore|sign|apktool|smali|aapt|zipalign|apksigner|android.jar' | sort | sed -n '1,240p'
