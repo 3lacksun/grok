@@ -16,6 +16,7 @@ android {
         versionCode = 3
         versionName = "0.1.2"
         multiDexEnabled = true
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -60,5 +61,7 @@ dependencies {
     implementation("org.apktool:apktool-lib:2.12.1")
     implementation("com.android.tools.build:apksig:8.13.0")
 
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
