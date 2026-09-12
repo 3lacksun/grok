@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,8 +49,8 @@ jobs:
           tar -xzf apkforge-source.tar.gz -C apkforge-work
           if [ -d apk-forge-build/overrides ]; then cp -a apk-forge-build/overrides/. apkforge-work/; fi
 
-          # Package pinned Android-native AAPT2 binaries. They are installed by Android
-          # into nativeLibraryDir and invoked by the embedded Apktool engine at runtime.
+          # Package pinned Android-native AAPT2 binaries. Android extracts the matching
+          # ABI into nativeLibraryDir where the embedded Apktool engine can execute it.
           BASE=https://github.com/ReVanced/aapt2/releases/download/v1.1.0
           fetch_aapt2() {
             ABI="$1"; ASSET="$2"; SHA="$3"
@@ -76,7 +76,6 @@ jobs:
           printf '%s\n' 'package com.example; public final class Ext {}' > "$FIX/src/com/example/Ext.java"
           printf '\177ELFfixture' > "$FIX/lib/arm64-v8a/libfixture.so"
 
-          # Backward-compatible guard for the original minSdk lint defect.
           python3 - <<'PY'
           from pathlib import Path
           p = Path('apkforge-work/app/src/main/kotlin/net/apkforge/app/MainActivity.kt')
@@ -115,6 +114,45 @@ jobs:
         working-directory: apkforge-work
         run: gradle --stacktrace --no-daemon :app:assembleDebug
 
+      - name: Create runtime rebuild fixture APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+          ANDROID_JAR="$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          F=runtime-fixture
+          mkdir -p "$F/res/values" apkforge-work/app/src/androidTest/assets
+          cat > "$F/AndroidManifest.xml" <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="net.apkforge.fixture" android:versionCode="1" android:versionName="1.0">
+            <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36"/>
+            <application android:label="APK Forge Runtime Fixture"/>
+          </manifest>
+          EOF
+          cat > "$F/res/values/strings.xml" <<'EOF'
+          <resources><string name="fixture_text">runtime</string></resources>
+          EOF
+          "$BT/aapt2" compile --dir "$F/res" -o "$F/compiled.zip"
+          "$BT/aapt2" link -I "$ANDROID_JAR" --manifest "$F/AndroidManifest.xml" -R "$F/compiled.zip" -o "$F/fixture.apk"
+          test -s "$F/fixture.apk"
+          cp "$F/fixture.apk" apkforge-work/app/src/androidTest/assets/fixture.apk
+          sha256sum "$F/fixture.apk" | tee runtime-fixture-sha256.txt
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+
+      - name: Android runtime embedded rebuild test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          disk-size: 6000M
+          script: cd apkforge-work && gradle --stacktrace --no-daemon :app:connectedDebugAndroidTest
+
       - name: Verify APK identity, packaged engine, alignment and signature
         shell: bash
         run: |
@@ -135,17 +173,19 @@ jobs:
         shell: bash
         run: |
           mkdir -p evidence
-          cp -f core-regression.txt evidence/ 2>/dev/null || true
+          cp -f core-regression.txt runtime-fixture-sha256.txt evidence/ 2>/dev/null || true
           cp -f apk-badging.txt apk-contents.txt zipalign.txt apksigner.txt apk-sha256.txt evidence/ 2>/dev/null || true
           cp -f apkforge-work/app/build/reports/lint-results-debug.html evidence/ 2>/dev/null || true
           cp -f apkforge-work/app/build/reports/lint-results-debug.xml evidence/ 2>/dev/null || true
           cp -rf apkforge-work/core/build/test-results evidence/core-test-results 2>/dev/null || true
+          cp -rf apkforge-work/app/build/outputs/androidTest-results evidence/android-runtime-test-results 2>/dev/null || true
+          cp -rf apkforge-work/app/build/reports/androidTests evidence/android-runtime-test-reports 2>/dev/null || true
 
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: APK_FORGE_HYBRID_V0_1_2_EMBEDDED_BUILD_DEBUG
+          name: APK_FORGE_HYBRID_V0_1_2_RUNTIME_VERIFIED_DEBUG
           path: apkforge-work/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -154,7 +194,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: APK_FORGE_HYBRID_V0_1_2_EMBEDDED_BUILD_EVIDENCE
+          name: APK_FORGE_HYBRID_V0_1_2_RUNTIME_VERIFICATION_EVIDENCE
           path: evidence
           if-no-files-found: warn
           retention-days: 7
