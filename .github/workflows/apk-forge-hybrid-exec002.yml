@@ -3,7 +3,7 @@ name: APK Forge Hybrid EXEC002 Build
 on:
   push:
     branches:
-      - apk-forge-hybrid-exec002-11092026
+      - apk-forge-hybrid-metadata-fix-12092026
   workflow_dispatch:
 
 permissions:
@@ -59,19 +59,10 @@ jobs:
           printf '%s\n' 'package com.example; public final class Ext {}' > "$FIX/src/com/example/Ext.java"
           printf '\177ELFfixture' > "$FIX/lib/arm64-v8a/libfixture.so"
 
-          # Backward-compatible guard for the original minSdk lint defect.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('apkforge-work/app/src/main/kotlin/net/apkforge/app/MainActivity.kt')
-          text = p.read_text()
-          old = 'val dirs=Files.list(root).use{s->s.filter(Files::isDirectory).toList()}'
-          new = 'val dirs=Files.list(root).use{s->s.filter(Files::isDirectory).iterator().asSequence().toList()}'
-          if old in text:
-              text = text.replace(old, new, 1)
-              p.write_text(text)
-          elif new not in text:
-              raise SystemExit('MainActivity directory collection expression is neither recognised variant')
-          PY
+          # Guard against regressions in the handover ZIP / Gradle metadata fix.
+          grep -q 'app/src/main/AndroidManifest.xml' apkforge-work/core/src/main/kotlin/net/apkforge/core/project/ProjectAnalyser.kt
+          grep -q 'applicationId' apkforge-work/core/src/main/kotlin/net/apkforge/core/project/ProjectAnalyser.kt
+          grep -q 'findBestProjectRoot' apkforge-work/app/src/main/kotlin/net/apkforge/app/MainActivity.kt
 
           find apkforge-work -maxdepth 3 -type f | sort | sed -n '1,200p'
 
@@ -123,7 +114,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: APK_FORGE_HYBRID_V0_1_1_DEBUG
+          name: APK_FORGE_HYBRID_V0_1_2_DEBUG
           path: apkforge-work/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -132,7 +123,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: APK_FORGE_HYBRID_V0_1_1_EXEC002_EVIDENCE
+          name: APK_FORGE_HYBRID_V0_1_2_EXEC002_EVIDENCE
           path: evidence
           if-no-files-found: warn
           retention-days: 7
