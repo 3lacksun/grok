@@ -1,0 +1,47 @@
+name: STONE WEB Composer Resolver
+
+on:
+  push:
+    paths:
+      - 'stone-web-composer/**'
+      - '.github/workflows/stone-web-composer-resolver.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: curl, mbstring, openssl
+          tools: composer:v2
+
+      - name: Resolve locked production dependencies
+        working-directory: stone-web-composer
+        run: |
+          composer validate --strict
+          composer update --no-dev --prefer-dist --optimize-autoloader --classmap-authoritative --no-interaction --no-progress
+          rm -rf vendor
+          composer install --no-dev --prefer-dist --optimize-autoloader --classmap-authoritative --no-interaction --no-progress
+          php -r "require 'vendor/autoload.php'; exit(class_exists('Minishlink\\WebPush\\WebPush') && class_exists('Minishlink\\WebPush\\Subscription') && class_exists('GuzzleHttp\\Client') ? 0 : 1);"
+          composer validate --strict
+
+      - name: Package resolver output
+        run: |
+          cd stone-web-composer
+          zip -qr ../stone-web-composer-runtime.zip composer.json composer.lock vendor
+
+      - name: Upload resolver output
+        uses: actions/upload-artifact@v4
+        with:
+          name: stone-web-composer-runtime
+          path: stone-web-composer-runtime.zip
+          if-no-files-found: error
+          retention-days: 1
